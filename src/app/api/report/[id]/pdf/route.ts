@@ -276,42 +276,9 @@ export async function GET(
       doc.y = PAGE.headerH + 18;
     };
 
-    const footer = () => {
-      const y = doc.page.height - PAGE.footerH;
-      doc.save();
-      doc
-        .strokeColor(COLORS.slate200)
-        .lineWidth(1)
-        .moveTo(PAGE.margin, y)
-        .lineTo(doc.page.width - PAGE.margin, y)
-        .stroke();
-
-      doc
-        .fillColor(COLORS.slate500)
-        .fontSize(9)
-        .text(
-          `Verification: ${report.verificationHash}`,
-          PAGE.margin,
-          y + 10,
-          { width: contentW }
-        );
-
-      doc
-        .fillColor(COLORS.slate500)
-        .fontSize(9)
-        .text(
-          `Generated: ${new Date(report.generatedAt).toLocaleDateString()}`,
-          PAGE.margin,
-          y + 10,
-          { width: contentW, align: "right" }
-        );
-      doc.restore();
-    };
-
     const ensureSpace = (height: number) => {
       const bottom = doc.page.height - PAGE.footerH - 18;
       if (doc.y + height <= bottom) return;
-      footer();
       doc.addPage();
       header();
     };
@@ -356,14 +323,14 @@ export async function GET(
           .roundedRect(x, y, w, h, PAGE.radius)
           .stroke();
 
-        doc.fillColor(COLORS.slate500).fontSize(9);
-        drawWrappedTextInBox(label.toUpperCase(), x + 12, y + 10, w - 24, 12);
+        doc.fillColor(COLORS.slate500).fontSize(8);
+        doc.text(label.toUpperCase(), x + 12, y + 8, { width: w - 24, lineBreak: false });
 
-        doc.fillColor(COLORS.slate900).fontSize(22);
-        drawWrappedTextInBox(String(value), x + 12, y + 26, w - 24, 24);
+        doc.fillColor(COLORS.slate900).fontSize(26);
+        doc.text(String(value), x + 12, y + 22, { width: w - 24, lineBreak: false });
 
         const barX = x + 12;
-        const barY = y + h - 28;
+        const barY = y + h - 24;
         const barW = w - 24;
         const barH = 6;
         doc.roundedRect(barX, barY, barW, barH, 3).fill("#E5E7EB");
@@ -377,8 +344,8 @@ export async function GET(
           )
           .fill(scoreColor(value));
 
-        doc.fillColor(COLORS.slate500).fontSize(9);
-        drawWrappedTextInBox(hint, x + 12, y + h - 18, w - 24, 12);
+        doc.fillColor(COLORS.slate500).fontSize(8);
+        doc.text(hint, x + 12, y + h - 16, { width: w - 24, lineBreak: false });
 
         doc.restore();
       });
@@ -393,16 +360,16 @@ export async function GET(
     ) => {
       withSavedCursor(() => {
         doc.save();
-        doc.roundedRect(x, y, w, 30, 8).fill(COLORS.slate100);
+        doc.roundedRect(x, y, w, 36, 8).fill(COLORS.slate100);
         doc
           .strokeColor(COLORS.slate200)
           .lineWidth(1)
-          .roundedRect(x, y, w, 30, 8)
+          .roundedRect(x, y, w, 36, 8)
           .stroke();
         doc.fillColor(COLORS.slate500).fontSize(9);
-        drawWrappedTextInBox(label, x + 10, y + 7, w - 20, 12);
-        doc.fillColor(COLORS.slate900).fontSize(11);
-        drawWrappedTextInBox(value, x + 10, y + 16, w - 20, 12, { align: "right" });
+        doc.text(label, x + 12, y + 8, { width: w - 24, lineBreak: false });
+        doc.fillColor(COLORS.slate900).fontSize(14);
+        doc.text(value, x + 12, y + 20, { width: w - 24, align: "right", lineBreak: false });
         doc.restore();
       });
     };
@@ -413,7 +380,7 @@ export async function GET(
       w: number,
       repo: ReportMetrics["topRepositories"][number]
     ) => {
-      const h = 72;
+      const h = 76;
       withSavedCursor(() => {
         doc.save();
         doc.roundedRect(x, y, w, h, PAGE.radius).fill("#FFFFFF");
@@ -424,15 +391,14 @@ export async function GET(
           .stroke();
 
         doc.fillColor(COLORS.slate900).fontSize(10);
-        drawWrappedTextInBox(safeText(repo.name, 28), x + 10, y + 8, w - 20, 12);
+        doc.text(safeText(repo.name, 30), x + 10, y + 8, { width: w - 20, lineBreak: false });
 
         doc.fillColor(COLORS.slate500).fontSize(8);
-        drawWrappedTextInBox(
-          safeText(repo.description || "No description", 80),
+        doc.text(
+          safeText(repo.description || "No description", 70),
           x + 10,
           y + 22,
-          w - 20,
-          22
+          { width: w - 20, lineBreak: false }
         );
 
         const meta = [
@@ -443,7 +409,7 @@ export async function GET(
         ].join(" • ");
 
         doc.fillColor(COLORS.slate700).fontSize(8);
-        drawWrappedTextInBox(safeText(meta, 100), x + 10, y + 50, w - 20, 14);
+        doc.text(safeText(meta, 60), x + 10, y + h - 20, { width: w - 20, lineBreak: false });
 
         doc.restore();
       });
@@ -510,8 +476,12 @@ export async function GET(
 
     if (report.aiSummary) {
       sectionTitle("AI Summary");
+      const aiText = stripMarkdownToText(report.aiSummary);
+      doc.fontSize(9);
+      const aiLines = wrapText(aiText, contentW - 24);
+      const lineH = doc.currentLineHeight(true);
+      const aiBoxH = Math.min(160, Math.max(50, aiLines.length * lineH + 16));
       const aiBoxY = doc.y;
-      const aiBoxH = 80;
       ensureSpace(aiBoxH + 10);
 
       doc.save();
@@ -525,7 +495,7 @@ export async function GET(
 
       doc.fillColor(COLORS.slate700).fontSize(9);
       drawWrappedTextInBox(
-        stripMarkdownToText(report.aiSummary),
+        aiText,
         contentX + 12,
         aiBoxY + 10,
         contentW - 24,
@@ -537,8 +507,8 @@ export async function GET(
 
     sectionTitle("Core Metrics");
 
-    const cardH = 74;
-    const colGap = 10;
+    const cardH = 82;
+    const colGap = 8;
     const colW = (contentW - colGap) / 2;
     const rowGap = 10;
 
@@ -582,7 +552,7 @@ export async function GET(
       "Team interaction"
     );
 
-    doc.y = startY + cardH * 2 + rowGap + 14;
+    doc.y = startY + cardH * 2 + rowGap + 12;
 
     sectionTitle("Activity Summary");
 
@@ -605,25 +575,29 @@ export async function GET(
     );
     statPill(
       contentX,
-      pillY + 40,
+      pillY + 46,
       pillW,
       "Code reviews",
       String(metrics.contributionSummary.reviewsGiven)
     );
     statPill(
       contentX + pillW + colGap,
-      pillY + 40,
+      pillY + 46,
       pillW,
       "Active weeks",
       `${metrics.contributionSummary.activeWeeks}/${metrics.contributionSummary.totalWeeks}`
     );
 
-    doc.y = pillY + 74;
+    doc.y = pillY + 92;
+
+    // Page 2: Top Repositories + CV Insert
+    doc.addPage();
+    header();
 
     sectionTitle("Top Repositories");
 
     const repoGap = 10;
-    const repoCardH = 72;
+    const repoCardH = 76;
     const repoRowH = repoCardH + repoGap;
     const repoColW = (contentW - repoGap) / 2;
 
@@ -637,18 +611,12 @@ export async function GET(
         });
       doc.moveDown(1);
     } else {
+      const totalRepoRows = Math.ceil(repos.length / 2);
+      const totalRepoH = totalRepoRows * repoRowH;
+      ensureSpace(totalRepoH);
       let repoY = doc.y;
 
       for (let i = 0; i < repos.length; i += 2) {
-        const bottom = doc.page.height - PAGE.footerH - 18;
-        if (repoY + repoCardH > bottom) {
-          footer();
-          doc.addPage();
-          header();
-          sectionTitle("Top Repositories");
-          repoY = doc.y;
-        }
-
         const left = repos[i];
         const right = repos[i + 1];
 
@@ -664,8 +632,8 @@ export async function GET(
     }
 
     sectionTitle("CV Insert");
-    const cvBoxH = 180;
-    ensureSpace(cvBoxH + 60);
+    const cvBoxH = 140;
+    ensureSpace(cvBoxH + 50);
 
     const boxY = doc.y;
     const boxH = cvBoxH;
@@ -688,7 +656,7 @@ export async function GET(
     );
 
     doc.x = contentX;
-    doc.y = boxY + boxH + 12;
+    doc.y = boxY + boxH + 8;
 
     const shareableLink = `${process.env.NEXTAUTH_URL}/r/${report.verificationHash}`;
     doc
@@ -708,7 +676,14 @@ export async function GET(
         { width: contentW }
       );
 
-    footer();
+    doc.moveDown(0.5);
+    doc
+      .fillColor(COLORS.slate500)
+      .fontSize(8)
+      .text(
+        `Verification: ${report.verificationHash} • Generated: ${new Date(report.generatedAt).toLocaleDateString()}`,
+        { width: contentW }
+      );
 
     doc.end();
 
