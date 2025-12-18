@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import { Providers } from "@/components/providers";
+import LetterGlitch from "@/components/LetterGlitch";
 import "./globals.css";
 
 const geistSans = Geist({
@@ -26,9 +27,18 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en">
-      <body
-        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}
       >
+       {/* <LetterGlitch
+          glitchSpeed={50}
+          centerVignette={true}
+          outerVignette={true}
+          smooth={true}
+          characters="ABCDEFGHIJKLMNOPQRSTUVWXYZ!@#$&*()-_+=/[]{};:<>.,0123456789"
+          glitchColors={["#2b4539", "#61dca3", "#61b3dc"]}
+          
+        /> */}
+        
         <Providers>{children}</Providers>
       </body>
     </html>

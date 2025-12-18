@@ -1,6 +1,7 @@
 import { auth } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { AuthButton } from "@/components/auth-button";
+
 import {
   Github,
   FileText,
@@ -30,7 +31,8 @@ export default async function Home() {
       </header>
 
       <main>
-        <section className="container mx-auto px-4 py-20 text-center">
+       
+        <section className="container mt-0 mx-auto px-4 py-20 text-center">
           <h1 className="text-5xl font-bold tracking-tight text-slate-900 sm:text-6xl mb-6">
             Transform Your GitHub Activity
             <br />

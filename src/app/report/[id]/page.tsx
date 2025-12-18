@@ -163,6 +163,12 @@ export default function ReportPage() {
                   )}
                   {copied ? "Copied!" : "Share"}
                 </Button>
+                <Button variant="outline" size="sm" asChild>
+                  <a href={`/api/report/${report.id}/pdf`}>
+                    <Download className="mr-2 h-4 w-4" />
+                    PDF
+                  </a>
+                </Button>
               </div>
             </div>
           </CardHeader>
