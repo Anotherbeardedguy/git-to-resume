@@ -13,6 +13,15 @@ function parseIncludedRepos(value: string | null): string[] | null {
   }
 }
 
+function parseMetrics(value: string | null): unknown | null {
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
 export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
@@ -52,7 +61,7 @@ export async function GET(
       status: report.status,
       generatedAt: report.generatedAt,
       verificationHash: report.verificationHash,
-      metrics: report.metrics ? JSON.parse(report.metrics) : null,
+      metrics: parseMetrics(report.metrics),
       cvInsert: report.cvInsert,
       includedRepos: parseIncludedRepos(report.includedRepos),
       aiSummary: report.aiSummary,

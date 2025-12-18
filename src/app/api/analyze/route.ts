@@ -35,13 +35,42 @@ export async function POST(request: Request) {
     }
 
     const body = await request.json().catch(() => null);
-    const includedRepoFullNamesRaw = body?.includedRepoFullNames;
-    const includePrivateRepoCount = body?.includePrivateRepoCount === true;
+    if (body !== null && (typeof body !== "object" || Array.isArray(body))) {
+      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+    }
+
+    const includedRepoFullNamesRaw = (body as { includedRepoFullNames?: unknown } | null)
+      ?.includedRepoFullNames;
+    const includePrivateRepoCountRaw = (body as { includePrivateRepoCount?: unknown } | null)
+      ?.includePrivateRepoCount;
+
+    if (
+      typeof includePrivateRepoCountRaw !== "undefined" &&
+      typeof includePrivateRepoCountRaw !== "boolean"
+    ) {
+      return NextResponse.json(
+        { error: "includePrivateRepoCount must be a boolean" },
+        { status: 400 }
+      );
+    }
+    const includePrivateRepoCount = includePrivateRepoCountRaw === true;
+
+    if (
+      typeof includedRepoFullNamesRaw !== "undefined" &&
+      !Array.isArray(includedRepoFullNamesRaw)
+    ) {
+      return NextResponse.json(
+        { error: "includedRepoFullNames must be an array of strings" },
+        { status: 400 }
+      );
+    }
+
     const includedRepoFullNames = Array.isArray(includedRepoFullNamesRaw)
       ? includedRepoFullNamesRaw
           .filter((v: unknown): v is string => typeof v === "string")
           .map((v) => v.trim())
-          .filter((v) => v.length > 0)
+          .filter((v) => v.length > 0 && v.length <= 200)
+          .slice(0, 50)
       : null;
 
     const verificationHash = crypto.randomBytes(16).toString("hex");

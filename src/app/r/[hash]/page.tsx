@@ -29,9 +29,20 @@ export default async function PublicReportPage({ params }: Props) {
     notFound();
   }
 
-  const metrics: ReportMetrics = report.metrics
-    ? JSON.parse(report.metrics)
-    : null;
+  if (report.expiresAt.getTime() < Date.now()) {
+    notFound();
+  }
+
+  let metrics: ReportMetrics | null = null;
+  try {
+    metrics = report.metrics ? (JSON.parse(report.metrics) as ReportMetrics) : null;
+  } catch {
+    metrics = null;
+  }
+
+  if (metrics && typeof metrics.privateRepoCount !== "undefined") {
+    metrics.privateRepoCount = null;
+  }
 
   if (!metrics) {
     notFound();

@@ -220,6 +220,10 @@ export default function DashboardPage() {
       </div>
     );
   }
+// @TODO 12, 24,36 month selector
+// @TODO MAX repos selector
+// @TODO Private repo selector
+// @TODO Max 3 reports for free users
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">

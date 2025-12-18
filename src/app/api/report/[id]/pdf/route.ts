@@ -46,7 +46,15 @@ export async function GET(
       );
     }
 
-    const metrics: ReportMetrics = JSON.parse(report.metrics);
+    let metrics: ReportMetrics;
+    try {
+      metrics = JSON.parse(report.metrics) as ReportMetrics;
+    } catch {
+      return NextResponse.json(
+        { error: "Report data corrupted" },
+        { status: 500 }
+      );
+    }
 
     const doc = new PDFDocument({
       size: "A4",
