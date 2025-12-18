@@ -3,6 +3,8 @@
 import { useSession } from "next-auth/react";
 import { useRouter, useParams } from "next/navigation";
 import { useEffect, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,6 +29,7 @@ import {
   Target,
   Users,
   Clock,
+  Trash2,
 } from "lucide-react";
 import { ReportMetrics } from "@/types";
 
@@ -37,6 +40,10 @@ interface ReportData {
   verificationHash: string;
   metrics: ReportMetrics;
   cvInsert: string;
+  includedRepos?: string[] | null;
+  aiSummary?: string | null;
+  aiSummaryModel?: string | null;
+  aiSummaryGeneratedAt?: string | null;
   user: {
     username: string;
     name: string;
@@ -53,6 +60,7 @@ export default function ReportPage() {
   const [report, setReport] = useState<ReportData | null>(null);
   const [loading, setLoading] = useState(true);
   const [copied, setCopied] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -91,6 +99,35 @@ export default function ReportPage() {
     }
   };
 
+  const downloadPDF = () => {
+    if (!report) return;
+    window.open(`/api/report/${report.id}/pdf`, "_blank", "noopener,noreferrer");
+  };
+
+  const deleteThisReport = async () => {
+    if (!report) return;
+    const ok = window.confirm(
+      "Delete this report? This cannot be undone and will remove the verification link."
+    );
+    if (!ok) return;
+
+    setDeleting(true);
+    try {
+      const res = await fetch(`/api/report/${report.id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const error = await res.json().catch(() => ({}));
+        alert(error.error || "Failed to delete report");
+        return;
+      }
+      router.push("/dashboard");
+    } catch (error) {
+      console.error("Failed to delete report:", error);
+      alert("Failed to delete report");
+    } finally {
+      setDeleting(false);
+    }
+  };
+
   if (status === "loading" || loading || !session) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
@@ -124,14 +161,60 @@ export default function ReportPage() {
       </header>
 
       <main className="container mx-auto px-4 py-8 max-w-4xl">
-        <Button
-          variant="ghost"
-          className="mb-6"
-          onClick={() => router.push("/dashboard")}
-        >
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          Back to Dashboard
-        </Button>
+        <div className="flex items-center justify-between mb-8">
+          <div>
+            <Button
+              variant="ghost"
+              onClick={() => router.push("/dashboard")}
+              className="mb-4"
+            >
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              Back to Dashboard
+            </Button>
+            <h1 className="text-3xl font-bold mb-2">GitHub Activity Report</h1>
+            <div className="flex items-center gap-4 text-sm text-muted-foreground">
+              <div className="flex items-center gap-4">
+                {report.user.image && (
+                  <img
+                    src={report.user.image}
+                    alt={report.user.name || "User"}
+                    className="w-16 h-16 rounded-full"
+                  />
+                )}
+                <div>
+                  <p className="font-medium">{report.user.name}</p>
+                  <p className="text-muted-foreground">
+                    @{report.user.username}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2">
+                  <Button variant="outline" onClick={copyShareLink}>
+                    {copied ? (
+                      <Check className="mr-2 h-4 w-4" />
+                    ) : (
+                      <Copy className="mr-2 h-4 w-4" />
+                    )}
+                    {copied ? "Copied" : "Copy Link"}
+                  </Button>
+                  <Button variant="outline" onClick={downloadPDF}>
+                    <Download className="mr-2 h-4 w-4" />
+                    PDF
+                  </Button>
+                  <Button
+                    variant="destructive"
+                    onClick={deleteThisReport}
+                    disabled={deleting}
+                  >
+                    <Trash2 className="mr-2 h-4 w-4" />
+                    {deleting ? "Deleting..." : "Delete"}
+                  </Button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
 
         <Card className="mb-6">
           <CardHeader>
@@ -155,20 +238,6 @@ export default function ReportPage() {
               </div>
               <div className="flex items-center gap-2">
                 <Badge variant="secondary">Last 12 Months</Badge>
-                <Button variant="outline" size="sm" onClick={copyShareLink}>
-                  {copied ? (
-                    <Check className="mr-2 h-4 w-4 text-green-600" />
-                  ) : (
-                    <Share2 className="mr-2 h-4 w-4" />
-                  )}
-                  {copied ? "Copied!" : "Share"}
-                </Button>
-                <Button variant="outline" size="sm" asChild>
-                  <a href={`/api/report/${report.id}/pdf`}>
-                    <Download className="mr-2 h-4 w-4" />
-                    PDF
-                  </a>
-                </Button>
               </div>
             </div>
           </CardHeader>
@@ -184,9 +253,37 @@ export default function ReportPage() {
                 <GitBranch className="h-4 w-4" />
                 <span>{metrics.activeRepos} active repositories</span>
               </div>
+              {typeof metrics.privateRepoCount === "number" && (
+                <div className="flex items-center gap-1">
+                  <GitBranch className="h-4 w-4" />
+                  <span>
+                    Private repos (not analyzed): {metrics.privateRepoCount}
+                  </span>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
+
+        {report.includedRepos && report.includedRepos.length > 0 && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>Included Repositories</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <div className="flex flex-wrap gap-2">
+                {report.includedRepos.map((r) => (
+                  <Badge key={r} variant="secondary">
+                    {r}
+                  </Badge>
+                ))}
+              </div>
+              <p className="text-xs text-muted-foreground mt-4">
+                This report was generated using a subset of your public, non-fork repos.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           <MetricCard
@@ -317,6 +414,33 @@ export default function ReportPage() {
             )}
           </CardContent>
         </Card>
+
+        {report.aiSummary && (
+          <Card className="mb-6">
+            <CardHeader>
+              <CardTitle>AI Semantic Summary</CardTitle>
+              {report.aiSummaryModel && (
+                <p className="text-sm text-muted-foreground">
+                  Model: {report.aiSummaryModel}
+                  {report.aiSummaryGeneratedAt &&
+                    ` • Generated: ${new Date(
+                      report.aiSummaryGeneratedAt
+                    ).toLocaleDateString()}`}
+                </p>
+              )}
+            </CardHeader>
+            <CardContent>
+              <div className="prose prose-slate max-w-none">
+                <ReactMarkdown remarkPlugins={[remarkGfm]}>
+                  {report.aiSummary}
+                </ReactMarkdown>
+              </div>
+              <p className="text-xs text-muted-foreground mt-4">
+                AI-generated interpretation. Verify against the underlying metrics.
+              </p>
+            </CardContent>
+          </Card>
+        )}
 
         <CVInsertBox text={report.cvInsert} shareableLink={report.shareableLink} />
 

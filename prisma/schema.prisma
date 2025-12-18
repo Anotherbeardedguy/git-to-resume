@@ -71,6 +71,10 @@ model Report {
   expiresAt        DateTime
   metrics          String?
   cvInsert         String?
+  includedRepos    String?
+  aiSummary        String?
+  aiSummaryModel   String?
+  aiSummaryGeneratedAt DateTime?
   user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([verificationHash])

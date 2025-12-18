@@ -85,6 +85,41 @@ export async function GET(
     const safeText = (value: string, maxLen: number) =>
       value.length > maxLen ? `${value.slice(0, maxLen - 1)}…` : value;
 
+    const stripMarkdownToText = (md: string) => {
+      // Keep this conservative: PDFKit is plain text; we just want to avoid showing raw MD tokens.
+      let text = md;
+
+      // Code fences
+      text = text.replace(/```[\s\S]*?```/g, (block) =>
+        block
+          .replace(/```\w*\n?/g, "")
+          .replace(/```/g, "")
+          .trim()
+      );
+
+      // Inline code
+      text = text.replace(/`([^`]+)`/g, "$1");
+
+      // Headings
+      text = text.replace(/^#{1,6}\s+/gm, "");
+
+      // Bold/italic
+      text = text.replace(/\*\*([^*]+)\*\*/g, "$1");
+      text = text.replace(/__([^_]+)__/g, "$1");
+      text = text.replace(/\*([^*]+)\*/g, "$1");
+      text = text.replace(/_([^_]+)_/g, "$1");
+
+      // Links: [text](url) -> text
+      text = text.replace(/\[([^\]]+)\]\(([^)]+)\)/g, "$1");
+
+      // Bullets
+      text = text.replace(/^\s*[-*+]\s+/gm, "• ");
+
+      // Collapse spacing
+      text = text.replace(/\n{3,}/g, "\n\n").trim();
+      return text;
+    };
+
     const contentX = PAGE.margin;
     const contentW = doc.page.width - PAGE.margin * 2;
 
@@ -431,7 +466,7 @@ export async function GET(
     doc.moveDown(1);
 
     const summaryBoxY = doc.y;
-    const summaryBoxH = 74;
+    const summaryBoxH = typeof metrics.privateRepoCount === "number" ? 92 : 74;
     ensureSpace(summaryBoxH + 16);
     doc.save();
     doc.roundedRect(contentX, summaryBoxY, contentW, summaryBoxH, PAGE.radius).fill("#FFFFFF");
@@ -452,6 +487,14 @@ export async function GET(
       .fillColor(COLORS.slate900)
       .fontSize(12)
       .text(`Active repos: ${metrics.activeRepos}`, { width: contentW - 32 });
+    if (typeof metrics.privateRepoCount === "number") {
+      doc
+        .fillColor(COLORS.slate700)
+        .fontSize(10)
+        .text(`Private repos (not analyzed): ${metrics.privateRepoCount}`, {
+          width: contentW - 32,
+        });
+    }
     doc
       .fillColor(COLORS.slate700)
       .fontSize(10)
@@ -464,6 +507,33 @@ export async function GET(
 
     doc.x = contentX;
     doc.y = summaryBoxY + summaryBoxH + 18;
+
+    if (report.aiSummary) {
+      sectionTitle("AI Summary");
+      const aiBoxY = doc.y;
+      const aiBoxH = 120;
+      ensureSpace(aiBoxH + 14);
+
+      doc.save();
+      doc.roundedRect(contentX, aiBoxY, contentW, aiBoxH, PAGE.radius).fill("#FFFFFF");
+      doc
+        .strokeColor(COLORS.slate200)
+        .lineWidth(1)
+        .roundedRect(contentX, aiBoxY, contentW, aiBoxH, PAGE.radius)
+        .stroke();
+      doc.restore();
+
+      doc.fillColor(COLORS.slate700).fontSize(10);
+      drawWrappedTextInBox(
+        stripMarkdownToText(report.aiSummary),
+        contentX + 14,
+        aiBoxY + 12,
+        contentW - 28,
+        aiBoxH - 24
+      );
+
+      doc.y = aiBoxY + aiBoxH + 18;
+    }
 
     sectionTitle("Core Metrics");
 

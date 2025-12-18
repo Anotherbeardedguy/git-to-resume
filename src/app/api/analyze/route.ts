@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { analyzeGitHubActivity, generateCVInsert } from "@/lib/github";
+import { generateSemanticSummary } from "@/lib/openai";
 import crypto from "crypto";
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
     const session = await auth();
 
@@ -21,7 +22,10 @@ export async function POST() {
       return NextResponse.json({ error: "User not found" }, { status: 404 });
     }
 
-    const githubAccount = user.accounts.find((a) => a.provider === "github");
+    const githubAccount = user.accounts.find(
+      (a: { provider: string; access_token: string | null }) =>
+        a.provider === "github"
+    );
 
     if (!githubAccount?.access_token) {
       return NextResponse.json(
@@ -29,6 +33,16 @@ export async function POST() {
         { status: 400 }
       );
     }
+
+    const body = await request.json().catch(() => null);
+    const includedRepoFullNamesRaw = body?.includedRepoFullNames;
+    const includePrivateRepoCount = body?.includePrivateRepoCount === true;
+    const includedRepoFullNames = Array.isArray(includedRepoFullNamesRaw)
+      ? includedRepoFullNamesRaw
+          .filter((v: unknown): v is string => typeof v === "string")
+          .map((v) => v.trim())
+          .filter((v) => v.length > 0)
+      : null;
 
     const verificationHash = crypto.randomBytes(16).toString("hex");
     const expiresAt = new Date();
@@ -40,6 +54,9 @@ export async function POST() {
         verificationHash,
         status: "processing",
         expiresAt,
+        includedRepos: includedRepoFullNames?.length
+          ? JSON.stringify(includedRepoFullNames)
+          : null,
       },
     });
 
@@ -47,10 +64,38 @@ export async function POST() {
       const metrics = await analyzeGitHubActivity(
         githubAccount.access_token,
         user.username || user.name || "user",
-        12
+        12,
+        {
+          includedRepoFullNames: includedRepoFullNames?.length
+            ? includedRepoFullNames
+            : undefined,
+          includePrivateRepoCount,
+        }
       );
 
       const cvInsert = generateCVInsert(metrics);
+
+      let aiSummary: string | null = null;
+      let aiSummaryModel: string | null = null;
+      let aiSummaryGeneratedAt: Date | null = null;
+
+      try {
+        const ai = await generateSemanticSummary({
+          metrics,
+          cvInsert,
+          username: user.username || user.name || "user",
+          timeWindowMonths: 12,
+        });
+        if (ai) {
+          aiSummary = ai.summary;
+          aiSummaryModel = ai.model;
+          aiSummaryGeneratedAt = new Date();
+        }
+      } catch {
+        aiSummary = null;
+        aiSummaryModel = null;
+        aiSummaryGeneratedAt = null;
+      }
 
       await prisma.report.update({
         where: { id: report.id },
@@ -58,6 +103,9 @@ export async function POST() {
           status: "completed",
           metrics: JSON.stringify(metrics),
           cvInsert,
+          aiSummary,
+          aiSummaryModel,
+          aiSummaryGeneratedAt,
         },
       });
 

@@ -8,6 +8,7 @@ export interface ReportMetrics {
   primaryLanguages: LanguageStat[];
   contributionSummary: ContributionSummary;
   topRepositories: RepositorySummary[];
+  privateRepoCount?: number | null;
 }
 
 export interface LanguageStat {

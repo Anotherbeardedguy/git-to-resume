@@ -83,23 +83,41 @@ async function fetchAllPages<T>(
   return results;
 }
 
+export async function listUserRepos(accessToken: string): Promise<GitHubRepo[]> {
+  const repos = await fetchAllPages<GitHubRepo>("/user/repos", accessToken, {
+    sort: "pushed",
+    direction: "desc",
+    type: "public",
+  });
+
+  return repos;
+}
+
 export async function analyzeGitHubActivity(
   accessToken: string,
   username: string,
-  timeWindowMonths = 12
+  timeWindowMonths = 12,
+  opts?: {
+    includedRepoFullNames?: string[];
+    includePrivateRepoCount?: boolean;
+  }
 ): Promise<ReportMetrics> {
   const cutoffDate = new Date();
   cutoffDate.setMonth(cutoffDate.getMonth() - timeWindowMonths);
 
-  const repos = await fetchAllPages<GitHubRepo>("/user/repos", accessToken, {
-    sort: "pushed",
-    direction: "desc",
-    type: "all",
-  });
+  const repos = await listUserRepos(accessToken);
 
   const publicRepos = repos.filter((r) => !r.private && !r.fork);
+  const allowed = new Set(
+    (opts?.includedRepoFullNames ?? []).filter(
+      (v): v is string => typeof v === "string" && v.trim().length > 0
+    )
+  );
+  const includedRepos = allowed.size
+    ? publicRepos.filter((r) => allowed.has(r.full_name))
+    : publicRepos;
 
-  const recentRepos = publicRepos.filter(
+  const recentRepos = includedRepos.filter(
     (r) => new Date(r.pushed_at) > cutoffDate
   );
 
@@ -112,7 +130,7 @@ export async function analyzeGitHubActivity(
 
   const recentEvents = events.filter((e) => new Date(e.created_at) > cutoffDate);
 
-  const languageStats = calculateLanguageStats(publicRepos);
+  const languageStats = calculateLanguageStats(includedRepos);
   const contributionSummary = calculateContributionSummary(
     recentEvents,
     timeWindowMonths
@@ -131,16 +149,30 @@ export async function analyzeGitHubActivity(
   const ownershipScore = calculateOwnershipScore(topRepositories);
   const collaborationIndex = calculateCollaborationIndex(contributionSummary);
 
+  let privateRepoCount: number | null = null;
+  if (opts?.includePrivateRepoCount) {
+    try {
+      const profile = await fetchGitHub("/user", accessToken);
+      privateRepoCount =
+        typeof profile?.total_private_repos === "number"
+          ? profile.total_private_repos
+          : null;
+    } catch {
+      privateRepoCount = null;
+    }
+  }
+
   return {
     consistencyIndex,
     recencyScore,
     ownershipScore,
     collaborationIndex,
-    totalRepos: publicRepos.length,
+    totalRepos: includedRepos.length,
     activeRepos: recentRepos.length,
     primaryLanguages: languageStats,
     contributionSummary,
     topRepositories,
+    privateRepoCount,
   };
 }
 
