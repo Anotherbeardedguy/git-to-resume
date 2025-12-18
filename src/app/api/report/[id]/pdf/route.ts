@@ -413,7 +413,7 @@ export async function GET(
       w: number,
       repo: ReportMetrics["topRepositories"][number]
     ) => {
-      const h = 92;
+      const h = 72;
       withSavedCursor(() => {
         doc.save();
         doc.roundedRect(x, y, w, h, PAGE.radius).fill("#FFFFFF");
@@ -423,27 +423,27 @@ export async function GET(
           .roundedRect(x, y, w, h, PAGE.radius)
           .stroke();
 
-        doc.fillColor(COLORS.slate900).fontSize(11);
-        drawWrappedTextInBox(safeText(repo.name, 28), x + 12, y + 12, w - 24, 14);
+        doc.fillColor(COLORS.slate900).fontSize(10);
+        drawWrappedTextInBox(safeText(repo.name, 28), x + 10, y + 8, w - 20, 12);
 
-        doc.fillColor(COLORS.slate500).fontSize(9);
+        doc.fillColor(COLORS.slate500).fontSize(8);
         drawWrappedTextInBox(
-          safeText(repo.description || "No description", 220),
-          x + 12,
-          y + 28,
-          w - 24,
-          32
+          safeText(repo.description || "No description", 80),
+          x + 10,
+          y + 22,
+          w - 20,
+          22
         );
 
         const meta = [
           repo.role,
           repo.languages.slice(0, 2).join(", ") || "N/A",
           `${repo.commits} commits`,
-          `${repo.ownershipPercentage}% ownership`,
+          `${repo.ownershipPercentage}%`,
         ].join(" • ");
 
-        doc.fillColor(COLORS.slate700).fontSize(9);
-        drawWrappedTextInBox(safeText(meta, 140), x + 12, y + 66, w - 24, 18);
+        doc.fillColor(COLORS.slate700).fontSize(8);
+        drawWrappedTextInBox(safeText(meta, 100), x + 10, y + 50, w - 20, 14);
 
         doc.restore();
       });
@@ -511,8 +511,8 @@ export async function GET(
     if (report.aiSummary) {
       sectionTitle("AI Summary");
       const aiBoxY = doc.y;
-      const aiBoxH = 120;
-      ensureSpace(aiBoxH + 14);
+      const aiBoxH = 80;
+      ensureSpace(aiBoxH + 10);
 
       doc.save();
       doc.roundedRect(contentX, aiBoxY, contentW, aiBoxH, PAGE.radius).fill("#FFFFFF");
@@ -523,24 +523,24 @@ export async function GET(
         .stroke();
       doc.restore();
 
-      doc.fillColor(COLORS.slate700).fontSize(10);
+      doc.fillColor(COLORS.slate700).fontSize(9);
       drawWrappedTextInBox(
         stripMarkdownToText(report.aiSummary),
-        contentX + 14,
-        aiBoxY + 12,
-        contentW - 28,
-        aiBoxH - 24
+        contentX + 12,
+        aiBoxY + 10,
+        contentW - 24,
+        aiBoxH - 20
       );
 
-      doc.y = aiBoxY + aiBoxH + 18;
+      doc.y = aiBoxY + aiBoxH + 12;
     }
 
     sectionTitle("Core Metrics");
 
-    const cardH = 84;
-    const colGap = 14;
+    const cardH = 74;
+    const colGap = 10;
     const colW = (contentW - colGap) / 2;
-    const rowGap = 14;
+    const rowGap = 10;
 
     ensureSpace(cardH * 2 + rowGap + 18);
     const startY = doc.y;
@@ -582,13 +582,13 @@ export async function GET(
       "Team interaction"
     );
 
-    doc.y = startY + cardH * 2 + rowGap + 20;
+    doc.y = startY + cardH * 2 + rowGap + 14;
 
     sectionTitle("Activity Summary");
 
     const pillW = (contentW - colGap) / 2;
     const pillY = doc.y;
-    ensureSpace(78);
+    ensureSpace(70);
     statPill(
       contentX,
       pillY,
@@ -618,16 +618,16 @@ export async function GET(
       `${metrics.contributionSummary.activeWeeks}/${metrics.contributionSummary.totalWeeks}`
     );
 
-    doc.y = pillY + 84;
+    doc.y = pillY + 74;
 
     sectionTitle("Top Repositories");
 
-    const repoGap = 12;
-    const repoCardH = 92;
+    const repoGap = 10;
+    const repoCardH = 72;
     const repoRowH = repoCardH + repoGap;
     const repoColW = (contentW - repoGap) / 2;
 
-    const repos = metrics.topRepositories.slice(0, 6);
+    const repos = metrics.topRepositories.slice(0, 4);
     if (repos.length === 0) {
       doc
         .fillColor(COLORS.slate500)
@@ -663,16 +663,12 @@ export async function GET(
       doc.y = repoY;
     }
 
-    footer();
-
-    doc.addPage();
-    header();
-
     sectionTitle("CV Insert");
-    ensureSpace(220);
+    const cvBoxH = 180;
+    ensureSpace(cvBoxH + 60);
 
     const boxY = doc.y;
-    const boxH = 260;
+    const boxH = cvBoxH;
     doc.save();
     doc.roundedRect(contentX, boxY, contentW, boxH, PAGE.radius).fill(COLORS.slate100);
     doc
@@ -692,21 +688,21 @@ export async function GET(
     );
 
     doc.x = contentX;
-    doc.y = boxY + boxH + 18;
+    doc.y = boxY + boxH + 12;
 
     const shareableLink = `${process.env.NEXTAUTH_URL}/r/${report.verificationHash}`;
     doc
       .fillColor(COLORS.slate900)
-      .fontSize(11)
+      .fontSize(10)
       .text("Verification link", { width: contentW });
     doc
       .fillColor(COLORS.primary)
-      .fontSize(10)
+      .fontSize(9)
       .text(shareableLink, { width: contentW, link: shareableLink });
-    doc.moveDown(0.5);
+    doc.moveDown(0.3);
     doc
       .fillColor(COLORS.slate500)
-      .fontSize(9)
+      .fontSize(8)
       .text(
         "This report provides activity evidence only. It does not claim skill level.",
         { width: contentW }
