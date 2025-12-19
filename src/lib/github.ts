@@ -9,6 +9,9 @@ import {
 
 const GITHUB_API = "https://api.github.com";
 
+const GITHUB_TIMEOUT_MS = 15_000;
+const GITHUB_MAX_RETRIES = 2;
+
 const LANGUAGE_COLORS: Record<string, string> = {
   TypeScript: "#3178c6",
   JavaScript: "#f1e05a",
@@ -32,6 +35,20 @@ const LANGUAGE_COLORS: Record<string, string> = {
   Other: "#6e7681",
 };
 
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+async function fetchWithTimeout(url: string, init: RequestInit, timeoutMs: number) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...init, signal: controller.signal });
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
 async function fetchGitHub(
   endpoint: string,
   accessToken: string,
@@ -44,18 +61,57 @@ async function fetchGitHub(
     );
   }
 
-  const response = await fetch(url.toString(), {
+  const requestInit: RequestInit = {
     headers: {
       Authorization: `Bearer ${accessToken}`,
       Accept: "application/vnd.github.v3+json",
     },
-  });
+  };
 
-  if (!response.ok) {
-    throw new Error(`GitHub API error: ${response.status}`);
+  for (let attempt = 0; attempt <= GITHUB_MAX_RETRIES; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(
+        url.toString(),
+        requestInit,
+        GITHUB_TIMEOUT_MS
+      );
+
+      if (response.ok) {
+        return response.json();
+      }
+
+      const status = response.status;
+      const retryAfter = response.headers.get("retry-after");
+      const retryAfterMs = retryAfter ? Number(retryAfter) * 1000 : null;
+
+      const retryableStatus =
+        status === 408 ||
+        status === 409 ||
+        status === 429 ||
+        status === 500 ||
+        status === 502 ||
+        status === 503 ||
+        status === 504;
+
+      if (attempt < GITHUB_MAX_RETRIES && retryableStatus) {
+        const backoff = 250 * Math.pow(2, attempt) + Math.floor(Math.random() * 150);
+        await sleep(retryAfterMs && retryAfterMs > 0 ? retryAfterMs : backoff);
+        continue;
+      }
+
+      throw new Error(`GitHub API error: ${status}`);
+    } catch (err) {
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      if (attempt < GITHUB_MAX_RETRIES && (isAbort || err instanceof TypeError)) {
+        const backoff = 250 * Math.pow(2, attempt) + Math.floor(Math.random() * 150);
+        await sleep(backoff);
+        continue;
+      }
+      throw err;
+    }
   }
 
-  return response.json();
+  throw new Error("GitHub API error: exhausted retries");
 }
 
 async function fetchAllPages<T>(

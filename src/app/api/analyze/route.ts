@@ -3,6 +3,7 @@ import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { analyzeGitHubActivity, generateCVInsert } from "@/lib/github";
 import { generateSemanticSummary } from "@/lib/openai";
+import { NO_STORE_HEADERS, rateLimit } from "@/lib/utils";
 import crypto from "crypto";
 
 export async function POST(request: Request) {
@@ -10,7 +11,21 @@ export async function POST(request: Request) {
     const session = await auth();
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    const rl = rateLimit(`analyze:${session.user.id}`, {
+      windowMs: 10 * 60 * 1000,
+      max: 5,
+    });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: "Too many requests" },
+        { status: 429, headers: rl.headers }
+      );
     }
 
     const user = await prisma.user.findUnique({
@@ -19,7 +34,10 @@ export async function POST(request: Request) {
     });
 
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
 
     const githubAccount = user.accounts.find(
@@ -30,13 +48,16 @@ export async function POST(request: Request) {
     if (!githubAccount?.access_token) {
       return NextResponse.json(
         { error: "GitHub account not connected" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
     const body = await request.json().catch(() => null);
     if (body !== null && (typeof body !== "object" || Array.isArray(body))) {
-      return NextResponse.json({ error: "Invalid JSON body" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Invalid JSON body" },
+        { status: 400, headers: NO_STORE_HEADERS }
+      );
     }
 
     const includedRepoFullNamesRaw = (body as { includedRepoFullNames?: unknown } | null)
@@ -50,7 +71,7 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json(
         { error: "includePrivateRepoCount must be a boolean" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
     const includePrivateRepoCount = includePrivateRepoCountRaw === true;
@@ -61,7 +82,7 @@ export async function POST(request: Request) {
     ) {
       return NextResponse.json(
         { error: "includedRepoFullNames must be an array of strings" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -141,7 +162,7 @@ export async function POST(request: Request) {
       return NextResponse.json({
         reportId: report.id,
         status: "completed",
-      });
+      }, { headers: NO_STORE_HEADERS });
     } catch (analysisError) {
       await prisma.report.update({
         where: { id: report.id },
@@ -153,7 +174,7 @@ export async function POST(request: Request) {
     console.error("Analysis error:", error);
     return NextResponse.json(
       { error: "Failed to analyze GitHub activity" },
-      { status: 500 }
+      { status: 500, headers: NO_STORE_HEADERS }
     );
   }
 }

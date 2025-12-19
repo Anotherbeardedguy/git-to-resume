@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { NO_STORE_HEADERS } from "@/lib/utils";
 
 function parseIncludedRepos(value: string | null): string[] | null {
   if (!value) return null;
@@ -31,7 +32,10 @@ export async function GET(
     const session = await auth();
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401, headers: NO_STORE_HEADERS }
+      );
     }
 
     const report = await prisma.report.findUnique({
@@ -49,32 +53,41 @@ export async function GET(
     });
 
     if (!report) {
-      return NextResponse.json({ error: "Report not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Report not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (report.userId !== session.user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403, headers: NO_STORE_HEADERS }
+      );
     }
 
-    return NextResponse.json({
-      id: report.id,
-      status: report.status,
-      generatedAt: report.generatedAt,
-      verificationHash: report.verificationHash,
-      metrics: parseMetrics(report.metrics),
-      cvInsert: report.cvInsert,
-      includedRepos: parseIncludedRepos(report.includedRepos),
-      aiSummary: report.aiSummary,
-      aiSummaryModel: report.aiSummaryModel,
-      aiSummaryGeneratedAt: report.aiSummaryGeneratedAt,
-      user: report.user,
-      shareableLink: `${process.env.NEXTAUTH_URL}/r/${report.verificationHash}`,
-    });
+    return NextResponse.json(
+      {
+        id: report.id,
+        status: report.status,
+        generatedAt: report.generatedAt,
+        verificationHash: report.verificationHash,
+        metrics: parseMetrics(report.metrics),
+        cvInsert: report.cvInsert,
+        includedRepos: parseIncludedRepos(report.includedRepos),
+        aiSummary: report.aiSummary,
+        aiSummaryModel: report.aiSummaryModel,
+        aiSummaryGeneratedAt: report.aiSummaryGeneratedAt,
+        user: report.user,
+        shareableLink: `${process.env.NEXTAUTH_URL}/r/${report.verificationHash}`,
+      },
+      { headers: NO_STORE_HEADERS }
+    );
   } catch (error) {
     console.error("Report fetch error:", error);
     return NextResponse.json(
       { error: "Failed to fetch report" },
-      { status: 500 }
+      { status: 500, headers: NO_STORE_HEADERS }
     );
   }
 }
@@ -88,7 +101,10 @@ export async function DELETE(
     const session = await auth();
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401, headers: NO_STORE_HEADERS }
+      );
     }
 
     const report = await prisma.report.findUnique({
@@ -97,21 +113,27 @@ export async function DELETE(
     });
 
     if (!report) {
-      return NextResponse.json({ error: "Report not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Report not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (report.userId !== session.user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403, headers: NO_STORE_HEADERS }
+      );
     }
 
     await prisma.report.delete({ where: { id } });
 
-    return NextResponse.json({ ok: true });
+    return NextResponse.json({ ok: true }, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("Report delete error:", error);
     return NextResponse.json(
       { error: "Failed to delete report" },
-      { status: 500 }
+      { status: 500, headers: NO_STORE_HEADERS }
     );
   }
 }

@@ -2,13 +2,17 @@ import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
 import { listUserRepos } from "@/lib/github";
+import { NO_STORE_HEADERS } from "@/lib/utils";
 
 export async function GET() {
   try {
     const session = await auth();
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401, headers: NO_STORE_HEADERS }
+      );
     }
 
     const user = await prisma.user.findUnique({
@@ -17,7 +21,10 @@ export async function GET() {
     });
 
     if (!user) {
-      return NextResponse.json({ error: "User not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "User not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
 
     const githubAccount = user.accounts.find(
@@ -28,7 +35,7 @@ export async function GET() {
     if (!githubAccount?.access_token) {
       return NextResponse.json(
         { error: "GitHub account not connected" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -46,12 +53,12 @@ export async function GET() {
         pushedAt: r.pushed_at,
       }));
 
-    return NextResponse.json(publicNonFork);
+    return NextResponse.json(publicNonFork, { headers: NO_STORE_HEADERS });
   } catch (error) {
     console.error("GitHub repos fetch error:", error);
     return NextResponse.json(
       { error: "Failed to fetch repositories" },
-      { status: 500 }
+      { status: 500, headers: NO_STORE_HEADERS }
     );
   }
 }

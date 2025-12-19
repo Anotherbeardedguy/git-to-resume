@@ -10,7 +10,7 @@ export async function generateSemanticSummary(params: {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) return null;
 
-  const client = new OpenAI({ apiKey });
+  const client = new OpenAI({ apiKey, timeout: 20_000, maxRetries: 2 });
 
   const prompt = {
     username: params.username,

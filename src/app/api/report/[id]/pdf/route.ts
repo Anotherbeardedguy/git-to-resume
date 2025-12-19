@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { auth } from "@/lib/auth";
 import { prisma } from "@/lib/prisma";
+import { NO_STORE_HEADERS, rateLimit } from "@/lib/utils";
 import PDFDocument from "pdfkit/js/pdfkit.standalone.js";
 import { PassThrough, Readable } from "stream";
 import { ReportMetrics } from "@/types";
@@ -16,7 +17,21 @@ export async function GET(
     const session = await auth();
 
     if (!session?.user?.id) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      return NextResponse.json(
+        { error: "Unauthorized" },
+        { status: 401, headers: NO_STORE_HEADERS }
+      );
+    }
+
+    const rl = rateLimit(`pdf:${session.user.id}`, {
+      windowMs: 5 * 60 * 1000,
+      max: 10,
+    });
+    if (!rl.ok) {
+      return NextResponse.json(
+        { error: "Too many requests" },
+        { status: 429, headers: rl.headers }
+      );
     }
 
     const report = await prisma.report.findUnique({
@@ -32,17 +47,23 @@ export async function GET(
     });
 
     if (!report) {
-      return NextResponse.json({ error: "Report not found" }, { status: 404 });
+      return NextResponse.json(
+        { error: "Report not found" },
+        { status: 404, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (report.userId !== session.user.id) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      return NextResponse.json(
+        { error: "Forbidden" },
+        { status: 403, headers: NO_STORE_HEADERS }
+      );
     }
 
     if (report.status !== "completed" || !report.metrics || !report.cvInsert) {
       return NextResponse.json(
         { error: "Report not ready" },
-        { status: 400 }
+        { status: 400, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -52,7 +73,7 @@ export async function GET(
     } catch {
       return NextResponse.json(
         { error: "Report data corrupted" },
-        { status: 500 }
+        { status: 500, headers: NO_STORE_HEADERS }
       );
     }
 
@@ -701,14 +722,14 @@ export async function GET(
       headers: {
         "Content-Type": "application/pdf",
         "Content-Disposition": `attachment; filename="github-activity-report-${id}.pdf"`,
-        "Cache-Control": "no-store",
+        ...NO_STORE_HEADERS,
       },
     });
   } catch (error) {
     console.error("PDF generation error:", error);
     return NextResponse.json(
       { error: "Failed to generate PDF" },
-      { status: 500 }
+      { status: 500, headers: NO_STORE_HEADERS }
     );
   }
 }
