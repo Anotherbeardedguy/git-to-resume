@@ -38,6 +38,7 @@ interface ReportData {
   status: string;
   generatedAt: string;
   verificationHash: string;
+  timeWindow: number;
   metrics: ReportMetrics;
   cvInsert: string;
   includedRepos?: string[] | null;
@@ -237,7 +238,7 @@ export default function ReportPage() {
                 </div>
               </div>
               <div className="flex items-center gap-2">
-                <Badge variant="secondary">Last 12 Months</Badge>
+                <Badge variant="secondary">Last {report.timeWindow} Months</Badge>
               </div>
             </div>
           </CardHeader>
@@ -367,7 +368,7 @@ export default function ReportPage() {
           <CardContent>
             {metrics.topRepositories.length === 0 ? (
               <p className="text-muted-foreground text-center py-8">
-                No repository activity found in the last 12 months.
+                No repository activity found in the last {report.timeWindow} months.
               </p>
             ) : (
               <div className="space-y-4">

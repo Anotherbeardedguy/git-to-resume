@@ -4,6 +4,7 @@ import { prisma } from "@/lib/prisma";
 import { analyzeGitHubActivity, generateCVInsert } from "@/lib/github";
 import { generateSemanticSummary } from "@/lib/openai";
 import { NO_STORE_HEADERS, rateLimit } from "@/lib/utils";
+import { getUserPlan } from "@/lib/subscription";
 import crypto from "crypto";
 
 export async function POST(request: Request) {
@@ -52,6 +53,22 @@ export async function POST(request: Request) {
       );
     }
 
+    const plan = await getUserPlan(session.user.id);
+    if (plan.maxReports > 0) {
+      const reportCount = await prisma.report.count({
+        where: { userId: session.user.id },
+      });
+      if (reportCount >= plan.maxReports) {
+        return NextResponse.json(
+          {
+            error:
+              "Free plan limit reached. Delete an existing report to generate a new one.",
+          },
+          { status: 403, headers: NO_STORE_HEADERS }
+        );
+      }
+    }
+
     const body = await request.json().catch(() => null);
     if (body !== null && (typeof body !== "object" || Array.isArray(body))) {
       return NextResponse.json(
@@ -64,6 +81,9 @@ export async function POST(request: Request) {
       ?.includedRepoFullNames;
     const includePrivateRepoCountRaw = (body as { includePrivateRepoCount?: unknown } | null)
       ?.includePrivateRepoCount;
+    const timeWindowMonthsRaw = (body as { timeWindowMonths?: unknown } | null)
+      ?.timeWindowMonths;
+    const maxReposRaw = (body as { maxRepos?: unknown } | null)?.maxRepos;
 
     if (
       typeof includePrivateRepoCountRaw !== "undefined" &&
@@ -75,6 +95,22 @@ export async function POST(request: Request) {
       );
     }
     const includePrivateRepoCount = includePrivateRepoCountRaw === true;
+
+    const timeWindowMonths =
+      timeWindowMonthsRaw === 12 || timeWindowMonthsRaw === 24 || timeWindowMonthsRaw === 36
+        ? timeWindowMonthsRaw
+        : 12;
+
+    let maxRepos: number | null = null;
+    if (typeof maxReposRaw !== "undefined") {
+      if (typeof maxReposRaw !== "number" || !Number.isFinite(maxReposRaw)) {
+        return NextResponse.json(
+          { error: "maxRepos must be a number" },
+          { status: 400, headers: NO_STORE_HEADERS }
+        );
+      }
+      maxRepos = Math.max(1, Math.min(50, Math.floor(maxReposRaw)));
+    }
 
     if (
       typeof includedRepoFullNamesRaw !== "undefined" &&
@@ -91,7 +127,7 @@ export async function POST(request: Request) {
           .filter((v: unknown): v is string => typeof v === "string")
           .map((v) => v.trim())
           .filter((v) => v.length > 0 && v.length <= 200)
-          .slice(0, 50)
+          .slice(0, maxRepos ?? 50)
       : null;
 
     const verificationHash = crypto.randomBytes(16).toString("hex");
@@ -104,6 +140,7 @@ export async function POST(request: Request) {
         verificationHash,
         status: "processing",
         expiresAt,
+        timeWindow: timeWindowMonths,
         includedRepos: includedRepoFullNames?.length
           ? JSON.stringify(includedRepoFullNames)
           : null,
@@ -114,12 +151,13 @@ export async function POST(request: Request) {
       const metrics = await analyzeGitHubActivity(
         githubAccount.access_token,
         user.username || user.name || "user",
-        12,
+        timeWindowMonths,
         {
           includedRepoFullNames: includedRepoFullNames?.length
             ? includedRepoFullNames
             : undefined,
           includePrivateRepoCount,
+          maxRepos: maxRepos ?? undefined,
         }
       );
 
@@ -134,7 +172,7 @@ export async function POST(request: Request) {
           metrics,
           cvInsert,
           username: user.username || user.name || "user",
-          timeWindowMonths: 12,
+          timeWindowMonths,
         });
         if (ai) {
           aiSummary = ai.summary;

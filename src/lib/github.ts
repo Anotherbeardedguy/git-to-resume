@@ -8,6 +8,7 @@ import {
 } from "@/types";
 
 const GITHUB_API = "https://api.github.com";
+const GITHUB_GRAPHQL_API = "https://api.github.com/graphql";
 
 const GITHUB_TIMEOUT_MS = 15_000;
 const GITHUB_MAX_RETRIES = 2;
@@ -114,6 +115,227 @@ async function fetchGitHub(
   throw new Error("GitHub API error: exhausted retries");
 }
 
+async function fetchGitHubGraphQL<T>(
+  accessToken: string,
+  query: string,
+  variables: Record<string, unknown>
+): Promise<T> {
+  const requestInit: RequestInit = {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${accessToken}`,
+      Accept: "application/vnd.github.v3+json",
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify({ query, variables }),
+  };
+
+  for (let attempt = 0; attempt <= GITHUB_MAX_RETRIES; attempt += 1) {
+    try {
+      const response = await fetchWithTimeout(
+        GITHUB_GRAPHQL_API,
+        requestInit,
+        GITHUB_TIMEOUT_MS
+      );
+
+      if (response.ok) {
+        const json = (await response.json()) as {
+          data?: T;
+          errors?: Array<{ message?: string }>;
+        };
+        if (json.errors && json.errors.length > 0) {
+          throw new Error(json.errors[0]?.message || "GitHub GraphQL error");
+        }
+        if (!json.data) throw new Error("GitHub GraphQL error: missing data");
+        return json.data;
+      }
+
+      const status = response.status;
+      const retryAfter = response.headers.get("retry-after");
+      const retryAfterMs = retryAfter ? Number(retryAfter) * 1000 : null;
+
+      const retryableStatus =
+        status === 408 ||
+        status === 409 ||
+        status === 429 ||
+        status === 500 ||
+        status === 502 ||
+        status === 503 ||
+        status === 504;
+
+      if (attempt < GITHUB_MAX_RETRIES && retryableStatus) {
+        const backoff = 250 * Math.pow(2, attempt) + Math.floor(Math.random() * 150);
+        await sleep(retryAfterMs && retryAfterMs > 0 ? retryAfterMs : backoff);
+        continue;
+      }
+
+      throw new Error(`GitHub GraphQL error: ${status}`);
+    } catch (err) {
+      const isAbort = err instanceof Error && err.name === "AbortError";
+      if (attempt < GITHUB_MAX_RETRIES && (isAbort || err instanceof TypeError)) {
+        const backoff = 250 * Math.pow(2, attempt) + Math.floor(Math.random() * 150);
+        await sleep(backoff);
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw new Error("GitHub GraphQL error: exhausted retries");
+}
+
+function toISODateOnly(d: Date): string {
+  const yyyy = d.getUTCFullYear();
+  const mm = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const dd = String(d.getUTCDate()).padStart(2, "0");
+  return `${yyyy}-${mm}-${dd}`;
+}
+
+async function fetchSearchCount(
+  accessToken: string,
+  query: string
+): Promise<number> {
+  const data = await fetchGitHubGraphQL<{
+    search: { issueCount: number };
+  }>(
+    accessToken,
+    "query($q: String!) { search(query: $q, type: ISSUE) { issueCount } }",
+    { q: query }
+  );
+  return typeof data.search.issueCount === "number" ? data.search.issueCount : 0;
+}
+
+function isValidFullName(fullName: string): boolean {
+  return /^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(fullName);
+}
+
+async function fetchSearchCountForRepos(
+  accessToken: string,
+  repoFullNames: string[] | undefined,
+  queryWithoutRepoQualifier: string
+): Promise<number> {
+  const repos = (repoFullNames ?? []).filter(isValidFullName);
+  if (repos.length === 0) {
+    return fetchSearchCount(accessToken, queryWithoutRepoQualifier);
+  }
+
+  const MAX_REPO_QUERIES = 20;
+  const capped = repos.slice(0, MAX_REPO_QUERIES);
+
+  let total = 0;
+  for (const repo of capped) {
+    total += await fetchSearchCount(
+      accessToken,
+      `repo:${repo} ${queryWithoutRepoQualifier}`
+    );
+  }
+  return total;
+}
+
+async function getContributionSummary(
+  accessToken: string,
+  username: string,
+  cutoffDate: Date,
+  fallbackEvents: GitHubEvent[],
+  includedRepoFullNames?: string[]
+): Promise<ContributionSummary> {
+  const now = new Date();
+
+  try {
+    const start = startOfISOWeek(cutoffDate);
+    const end = startOfISOWeek(now);
+    const diffMs = end.getTime() - start.getTime();
+    const totalWeeks = Math.max(1, Math.floor(diffMs / (7 * 86400000)) + 1);
+
+    let totalCommits = 0;
+    let issuesOpened = 0;
+    let reviewsGiven = 0;
+    let activeWeeks = 0;
+
+    // GitHub contributionCalendar can be limited; query in <= 52-week chunks.
+    let cursor = new Date(start);
+    while (cursor.getTime() <= now.getTime()) {
+      const chunkFrom = cursor;
+      const chunkTo = new Date(chunkFrom);
+      chunkTo.setDate(chunkTo.getDate() + 7 * 52 - 1);
+      if (chunkTo.getTime() > now.getTime()) chunkTo.setTime(now.getTime());
+
+      const data = await fetchGitHubGraphQL<{
+        user: {
+          contributionsCollection: {
+            totalCommitContributions: number;
+            totalPullRequestReviewContributions: number;
+            totalIssueContributions: number;
+            contributionCalendar: {
+              weeks: Array<{
+                contributionDays: Array<{ contributionCount: number }>;
+              }>;
+            };
+          };
+        };
+      }>(
+        accessToken,
+        "query($login: String!, $from: DateTime!, $to: DateTime!) { user(login: $login) { contributionsCollection(from: $from, to: $to) { totalCommitContributions totalPullRequestReviewContributions totalIssueContributions contributionCalendar { weeks { contributionDays { contributionCount } } } } } }",
+        { login: username, from: chunkFrom.toISOString(), to: chunkTo.toISOString() }
+      );
+
+      totalCommits += data.user.contributionsCollection.totalCommitContributions;
+      issuesOpened += data.user.contributionsCollection.totalIssueContributions;
+      reviewsGiven +=
+        data.user.contributionsCollection.totalPullRequestReviewContributions;
+
+      activeWeeks += data.user.contributionsCollection.contributionCalendar.weeks.reduce(
+        (count, w) => {
+          const sum = w.contributionDays.reduce(
+            (s, d) =>
+              s + (typeof d.contributionCount === "number" ? d.contributionCount : 0),
+            0
+          );
+          return sum > 0 ? count + 1 : count;
+        },
+        0
+      );
+
+      const next = new Date(chunkTo);
+      next.setDate(next.getDate() + 1);
+      cursor = startOfISOWeek(next);
+      if (cursor.getTime() === chunkFrom.getTime()) break;
+    }
+
+    const fromDate = toISODateOnly(cutoffDate);
+    const toDate = toISODateOnly(now);
+
+    const totalPRs = await fetchSearchCountForRepos(
+      accessToken,
+      includedRepoFullNames,
+      `author:${username} is:pr created:${fromDate}..${toDate}`
+    );
+    const mergedPRs = await fetchSearchCountForRepos(
+      accessToken,
+      includedRepoFullNames,
+      `author:${username} is:pr merged:${fromDate}..${toDate}`
+    );
+    const issuesClosed = await fetchSearchCountForRepos(
+      accessToken,
+      includedRepoFullNames,
+      `author:${username} is:issue closed:${fromDate}..${toDate}`
+    );
+
+    return {
+      totalCommits,
+      totalPRs,
+      mergedPRs,
+      issuesOpened,
+      issuesClosed,
+      reviewsGiven,
+      activeWeeks: Math.min(activeWeeks, totalWeeks),
+      totalWeeks,
+    };
+  } catch {
+    return calculateContributionSummaryFromEvents(fallbackEvents, cutoffDate);
+  }
+}
+
 async function fetchAllPages<T>(
   endpoint: string,
   accessToken: string,
@@ -156,6 +378,7 @@ export async function analyzeGitHubActivity(
   opts?: {
     includedRepoFullNames?: string[];
     includePrivateRepoCount?: boolean;
+    maxRepos?: number;
   }
 ): Promise<ReportMetrics> {
   const cutoffDate = new Date();
@@ -173,7 +396,14 @@ export async function analyzeGitHubActivity(
     ? publicRepos.filter((r) => allowed.has(r.full_name))
     : publicRepos;
 
-  const recentRepos = includedRepos.filter(
+  const maxRepos =
+    typeof opts?.maxRepos === "number" && Number.isFinite(opts.maxRepos)
+      ? Math.max(1, Math.min(50, Math.floor(opts.maxRepos)))
+      : null;
+
+  const cappedRepos = maxRepos ? includedRepos.slice(0, maxRepos) : includedRepos;
+
+  const recentRepos = cappedRepos.filter(
     (r) => new Date(r.pushed_at) > cutoffDate
   );
 
@@ -186,10 +416,13 @@ export async function analyzeGitHubActivity(
 
   const recentEvents = events.filter((e) => new Date(e.created_at) > cutoffDate);
 
-  const languageStats = calculateLanguageStats(includedRepos);
-  const contributionSummary = calculateContributionSummary(
+  const languageStats = calculateLanguageStats(cappedRepos);
+  const contributionSummary = await getContributionSummary(
+    accessToken,
+    username,
+    cutoffDate,
     recentEvents,
-    timeWindowMonths
+    opts?.includedRepoFullNames
   );
   const topRepositories = await analyzeTopRepositories(
     recentRepos.slice(0, 5),
@@ -223,7 +456,7 @@ export async function analyzeGitHubActivity(
     recencyScore,
     ownershipScore,
     collaborationIndex,
-    totalRepos: includedRepos.length,
+    totalRepos: cappedRepos.length,
     activeRepos: recentRepos.length,
     primaryLanguages: languageStats,
     contributionSummary,
@@ -253,19 +486,48 @@ function calculateLanguageStats(repos: GitHubRepo[]): LanguageStat[] {
     .slice(0, 5);
 }
 
-function calculateContributionSummary(
+function calculateContributionSummaryFromEvents(
   events: GitHubEvent[],
-  timeWindowMonths: number
+  cutoffDate: Date
 ): ContributionSummary {
   const pushEvents = events.filter((e) => e.type === "PushEvent");
-  const prEvents = events.filter(
-    (e) =>
-      e.type === "PullRequestEvent" || e.type === "PullRequestReviewEvent"
-  );
+  const prEvents = events.filter((e) => e.type === "PullRequestEvent");
   const issueEvents = events.filter((e) => e.type === "IssuesEvent");
-  const reviewEvents = events.filter(
-    (e) => e.type === "PullRequestReviewEvent"
-  );
+  const reviewEvents = events.filter((e) => e.type === "PullRequestReviewEvent");
+
+  const totalCommits = pushEvents.reduce((sum, e) => {
+    const size = e.payload?.size;
+    if (typeof size === "number" && Number.isFinite(size)) return sum + size;
+    const commits = e.payload?.commits;
+    if (Array.isArray(commits)) return sum + commits.length;
+    return sum;
+  }, 0);
+
+  const totalPRs = prEvents.filter((e) => {
+    const action = e.payload?.action;
+    return action === "opened" || action === "reopened" || typeof action !== "string";
+  }).length;
+
+  const mergedPRs = prEvents.filter((e) => {
+    const action = e.payload?.action;
+    const merged = e.payload?.pull_request?.merged;
+    return action === "closed" && merged === true;
+  }).length;
+
+  const issuesOpened = issueEvents.filter((e) => {
+    const action = e.payload?.action;
+    return action === "opened" || typeof action !== "string";
+  }).length;
+
+  const issuesClosed = issueEvents.filter((e) => {
+    const action = e.payload?.action;
+    return action === "closed";
+  }).length;
+
+  const reviewsGiven = reviewEvents.filter((e) => {
+    const action = e.payload?.action;
+    return action === "created" || typeof action !== "string";
+  }).length;
 
   const weekSet = new Set<string>();
   events.forEach((e) => {
@@ -274,25 +536,53 @@ function calculateContributionSummary(
     weekSet.add(weekKey);
   });
 
+  const totalWeeks = calculateTotalWeeks(cutoffDate, events);
+
   return {
-    totalCommits: pushEvents.length * 3,
-    totalPRs: prEvents.filter((e) => e.type === "PullRequestEvent").length,
-    mergedPRs: Math.floor(
-      prEvents.filter((e) => e.type === "PullRequestEvent").length * 0.7
-    ),
-    issuesOpened: issueEvents.length,
-    issuesClosed: Math.floor(issueEvents.length * 0.6),
-    reviewsGiven: reviewEvents.length,
+    totalCommits,
+    totalPRs,
+    mergedPRs,
+    issuesOpened,
+    issuesClosed,
+    reviewsGiven,
     activeWeeks: weekSet.size,
-    totalWeeks: timeWindowMonths * 4,
+    totalWeeks,
   };
 }
 
 function getWeekNumber(date: Date): number {
-  const firstDayOfYear = new Date(date.getFullYear(), 0, 1);
-  const pastDaysOfYear =
-    (date.getTime() - firstDayOfYear.getTime()) / 86400000;
-  return Math.ceil((pastDaysOfYear + firstDayOfYear.getDay() + 1) / 7);
+  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  const dayNum = d.getUTCDay() || 7;
+  d.setUTCDate(d.getUTCDate() + 4 - dayNum);
+  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
+  return Math.ceil((((d.getTime() - yearStart.getTime()) / 86400000) + 1) / 7);
+}
+
+function calculateTotalWeeks(cutoffDate: Date, events: GitHubEvent[]): number {
+  const now = new Date();
+  const earliestEvent = events.reduce<Date | null>((earliest, e) => {
+    const d = new Date(e.created_at);
+    if (Number.isNaN(d.getTime())) return earliest;
+    if (!earliest || d < earliest) return d;
+    return earliest;
+  }, null);
+
+  const start = earliestEvent && earliestEvent > cutoffDate ? earliestEvent : cutoffDate;
+
+  const startWeek = startOfISOWeek(start);
+  const endWeek = startOfISOWeek(now);
+  const diffMs = endWeek.getTime() - startWeek.getTime();
+  const weeks = Math.floor(diffMs / (7 * 86400000)) + 1;
+  return Math.max(1, weeks);
+}
+
+function startOfISOWeek(date: Date): Date {
+  const d = new Date(date);
+  d.setHours(0, 0, 0, 0);
+  const day = d.getDay();
+  const diff = (day + 6) % 7;
+  d.setDate(d.getDate() - diff);
+  return d;
 }
 
 async function analyzeTopRepositories(
@@ -396,7 +686,7 @@ export function generateCVInsert(metrics: ReportMetrics): string {
 
   const lines = [
     "GitHub Activity (Verified)",
-    `• Active contributor across ${metrics.activeRepos} repositories (12 months)`,
+    `• Active contributor across ${metrics.activeRepos} repositories`,
   ];
 
   if (metrics.topRepositories.filter((r) => r.role === "owner").length > 0) {

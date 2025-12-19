@@ -136,7 +136,7 @@ export default async function Home() {
       <footer className="container mx-auto px-4 py-8 text-center text-slate-500">
         <p>
           Git-to-Resume provides activity evidence only. Reports do not claim
-          skill levels. copyright {} Git-to-Resume
+          skill levels. Copyright {new Date().getFullYear()} Git-to-Resume. All rights reserved.
         </p>
       </footer>
     </div>

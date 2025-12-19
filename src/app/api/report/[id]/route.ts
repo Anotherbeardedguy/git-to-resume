@@ -72,6 +72,7 @@ export async function GET(
         status: report.status,
         generatedAt: report.generatedAt,
         verificationHash: report.verificationHash,
+        timeWindow: report.timeWindow,
         metrics: parseMetrics(report.metrics),
         cvInsert: report.cvInsert,
         includedRepos: parseIncludedRepos(report.includedRepos),

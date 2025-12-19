@@ -1,14 +1,33 @@
 import NextAuth from "next-auth";
 import GitHub from "next-auth/providers/github";
 import { PrismaAdapter } from "@auth/prisma-adapter";
+import { Prisma } from "@prisma/client";
 import { prisma } from "./prisma";
 
+const adapter = PrismaAdapter(prisma);
+
 export const { handlers, signIn, signOut, auth } = NextAuth({
-  adapter: PrismaAdapter(prisma),
+  adapter: {
+    ...adapter,
+    async deleteSession(sessionToken) {
+      try {
+        return await prisma.session.delete({ where: { sessionToken } });
+      } catch (err) {
+        if (
+          err instanceof Prisma.PrismaClientKnownRequestError &&
+          err.code === "P2025"
+        ) {
+          return null;
+        }
+        throw err;
+      }
+    },
+  },
   providers: [
     GitHub({
       clientId: process.env.GITHUB_CLIENT_ID!,
       clientSecret: process.env.GITHUB_CLIENT_SECRET!,
+      allowDangerousEmailAccountLinking: true,
       authorization: {
         params: {
           scope: "read:user user:email",

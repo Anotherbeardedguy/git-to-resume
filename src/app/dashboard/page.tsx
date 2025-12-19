@@ -50,6 +50,8 @@ export default function DashboardPage() {
     {}
   );
   const [includePrivateRepoCount, setIncludePrivateRepoCount] = useState(false);
+  const [timeWindowMonths, setTimeWindowMonths] = useState<12 | 24 | 36>(12);
+  const [maxRepos, setMaxRepos] = useState<number>(10);
 
   useEffect(() => {
     if (status === "unauthenticated") {
@@ -138,7 +140,7 @@ export default function DashboardPage() {
         const data = (await res.json()) as RepoOption[];
         setRepos(data);
         const defaults: Record<string, boolean> = {};
-        data.slice(0, 10).forEach((r) => {
+        data.slice(0, Math.max(1, Math.min(50, maxRepos))).forEach((r) => {
           defaults[r.fullName] = true;
         });
         setSelectedRepos(defaults);
@@ -161,6 +163,8 @@ export default function DashboardPage() {
         body: JSON.stringify({
           includedRepoFullNames,
           includePrivateRepoCount,
+          timeWindowMonths,
+          maxRepos,
         }),
       });
       if (res.ok) {
@@ -199,15 +203,15 @@ export default function DashboardPage() {
   };
 
   const onGenerateClick = async () => {
-    if (!showRepoPicker) {
-      await generateReport(undefined);
-      return;
-    }
-
     const included = Object.entries(selectedRepos)
       .filter(([, v]) => v)
       .map(([k]) => k);
-    await generateReport(included.length ? included : undefined);
+
+    // If the user has loaded repos and made selections, apply them even when
+    // the repo picker UI is currently hidden.
+    const hasRepoSelection = repos.length > 0 && included.length > 0;
+
+    await generateReport(hasRepoSelection ? included : undefined);
   };
 
   if (status === "loading" || !session) {
@@ -220,10 +224,6 @@ export default function DashboardPage() {
       </div>
     );
   }
-// @TODO 12, 24,36 month selector
-// @TODO MAX repos selector
-// @TODO Private repo selector
-// @TODO Max 3 reports for free users
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-slate-50 to-white">
@@ -247,7 +247,35 @@ export default function DashboardPage() {
               Welcome back, {session.user?.name}
             </p>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap justify-end">
+            <label className="text-sm text-muted-foreground flex items-center gap-2">
+              Window
+              <select
+                className="h-10 rounded-md border bg-white px-3 text-sm"
+                value={timeWindowMonths}
+                onChange={(e) => setTimeWindowMonths(Number(e.target.value) as 12 | 24 | 36)}
+                disabled={generating}
+              >
+                <option value={12}>12 mo</option>
+                <option value={24}>24 mo</option>
+                <option value={36}>36 mo</option>
+              </select>
+            </label>
+            <label className="text-sm text-muted-foreground flex items-center gap-2">
+              Max repos
+              <input
+                className="h-10 w-20 rounded-md border bg-white px-3 text-sm"
+                type="number"
+                min={1}
+                max={50}
+                value={maxRepos}
+                onChange={(e) => {
+                  const next = Number(e.target.value);
+                  setMaxRepos(Number.isFinite(next) ? Math.max(1, Math.min(50, Math.floor(next))) : 10);
+                }}
+                disabled={generating}
+              />
+            </label>
             <Button
               variant="outline"
               onClick={() => {

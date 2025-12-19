@@ -81,4 +81,13 @@ export interface GitHubEvent {
   repo: {
     name: string;
   };
+  payload?: {
+    size?: number;
+    commits?: unknown[];
+    action?: string;
+    pull_request?: {
+      merged?: boolean;
+      merged_at?: string | null;
+    };
+  };
 }

@@ -455,7 +455,7 @@ export async function GET(
       .fillColor(COLORS.slate500)
       .fontSize(11)
       .text(
-        `${displayName} (@${report.user.username ?? ""}) • Last 12 months`,
+        `${displayName} (@${report.user.username ?? ""}) • Last ${report.timeWindow} months`,
         { width: contentW }
       );
     doc.moveDown(1);
@@ -592,7 +592,7 @@ export async function GET(
       contentX,
       pillY,
       pillW,
-      "Commits (estimated)",
+      "Commits",
       String(metrics.contributionSummary.totalCommits)
     );
     statPill(
@@ -635,7 +635,7 @@ export async function GET(
       doc
         .fillColor(COLORS.slate500)
         .fontSize(10)
-        .text("No repository activity found in the last 12 months.", {
+        .text(`No repository activity found in the last ${report.timeWindow} months.`, {
           width: contentW,
         });
       doc.moveDown(1);

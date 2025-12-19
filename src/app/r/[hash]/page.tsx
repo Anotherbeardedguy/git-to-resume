@@ -79,7 +79,7 @@ export default async function PublicReportPage({ params }: Props) {
                 </div>
               </div>
               <Badge variant="secondary" className="text-sm">
-                Last 12 Months
+                Last {report.timeWindow} Months
               </Badge>
             </div>
           </CardHeader>

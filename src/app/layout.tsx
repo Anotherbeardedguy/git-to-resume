@@ -19,7 +19,6 @@ export const metadata: Metadata = {
   description:
     "Generate verified GitHub activity reports for your CV. Transform your contributions into recruiter-ready evidence.",
 };
-// @TODO subscription module
 export default function RootLayout({
   children,
 }: Readonly<{
