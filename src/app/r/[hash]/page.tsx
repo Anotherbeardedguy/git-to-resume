@@ -40,10 +40,6 @@ export default async function PublicReportPage({ params }: Props) {
     metrics = null;
   }
 
-  if (metrics && typeof metrics.privateRepoCount !== "undefined") {
-    metrics.privateRepoCount = null;
-  }
-
   if (!metrics) {
     notFound();
   }

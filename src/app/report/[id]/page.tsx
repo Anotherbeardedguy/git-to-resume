@@ -254,14 +254,6 @@ export default function ReportPage() {
                 <GitBranch className="h-4 w-4" />
                 <span>{metrics.activeRepos} active repositories</span>
               </div>
-              {typeof metrics.privateRepoCount === "number" && (
-                <div className="flex items-center gap-1">
-                  <GitBranch className="h-4 w-4" />
-                  <span>
-                    Private repos (not analyzed): {metrics.privateRepoCount}
-                  </span>
-                </div>
-              )}
             </div>
           </CardContent>
         </Card>

@@ -49,7 +49,6 @@ export default function DashboardPage() {
   const [selectedRepos, setSelectedRepos] = useState<Record<string, boolean>>(
     {}
   );
-  const [includePrivateRepoCount, setIncludePrivateRepoCount] = useState(false);
   const [timeWindowMonths, setTimeWindowMonths] = useState<12 | 24 | 36>(12);
   const [maxRepos, setMaxRepos] = useState<number>(10);
 
@@ -119,14 +118,11 @@ export default function DashboardPage() {
     }
   };
 
-  const reauthorizeGitHub = async (scope: "minimal" | "repo") => {
-    const scopeValue =
-      scope === "repo" ? "read:user user:email repo" : "read:user user:email";
-
+  const reauthorizeGitHub = async () => {
     await signIn(
       "github",
       { callbackUrl: "/dashboard" },
-      { scope: scopeValue, prompt: "consent" }
+      { scope: "read:user user:email", prompt: "consent" }
     );
   };
 
@@ -162,7 +158,6 @@ export default function DashboardPage() {
         },
         body: JSON.stringify({
           includedRepoFullNames,
-          includePrivateRepoCount,
           timeWindowMonths,
           maxRepos,
         }),
@@ -324,16 +319,9 @@ export default function DashboardPage() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => void reauthorizeGitHub("minimal")}
+                    onClick={() => void reauthorizeGitHub()}
                   >
                     Re-authorize (minimal)
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => void reauthorizeGitHub("repo")}
-                  >
-                    Re-authorize (repo)
                   </Button>
                   {githubConnected && (
                     <Button
@@ -356,14 +344,6 @@ export default function DashboardPage() {
               <CardTitle>Included repositories</CardTitle>
             </CardHeader>
             <CardContent>
-              <label className="flex items-center gap-2 mb-4 text-sm">
-                <input
-                  type="checkbox"
-                  checked={includePrivateRepoCount}
-                  onChange={(e) => setIncludePrivateRepoCount(e.target.checked)}
-                />
-                Include private repo count only (no private repo content is accessed)
-              </label>
               {reposLoading ? (
                 <div className="space-y-3">
                   <Skeleton className="h-10 w-full" />

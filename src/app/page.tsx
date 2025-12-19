@@ -135,7 +135,7 @@ export default async function Home() {
 
       <footer className="container mx-auto px-4 py-8 text-center text-slate-500">
         <p>
-          Git-to-Resume provides activity evidence only. Reports do not claim
+          {process.env.NEXT_PUBLIC_APP_VERSION ? `v${process.env.NEXT_PUBLIC_APP_VERSION} ` : ''}Git-to-Resume provides activity evidence only. Reports do not claim
           skill levels. Copyright {new Date().getFullYear()} Git-to-Resume. All rights reserved.
         </p>
       </footer>

@@ -79,22 +79,9 @@ export async function POST(request: Request) {
 
     const includedRepoFullNamesRaw = (body as { includedRepoFullNames?: unknown } | null)
       ?.includedRepoFullNames;
-    const includePrivateRepoCountRaw = (body as { includePrivateRepoCount?: unknown } | null)
-      ?.includePrivateRepoCount;
     const timeWindowMonthsRaw = (body as { timeWindowMonths?: unknown } | null)
       ?.timeWindowMonths;
     const maxReposRaw = (body as { maxRepos?: unknown } | null)?.maxRepos;
-
-    if (
-      typeof includePrivateRepoCountRaw !== "undefined" &&
-      typeof includePrivateRepoCountRaw !== "boolean"
-    ) {
-      return NextResponse.json(
-        { error: "includePrivateRepoCount must be a boolean" },
-        { status: 400, headers: NO_STORE_HEADERS }
-      );
-    }
-    const includePrivateRepoCount = includePrivateRepoCountRaw === true;
 
     const timeWindowMonths =
       timeWindowMonthsRaw === 12 || timeWindowMonthsRaw === 24 || timeWindowMonthsRaw === 36
@@ -156,7 +143,6 @@ export async function POST(request: Request) {
           includedRepoFullNames: includedRepoFullNames?.length
             ? includedRepoFullNames
             : undefined,
-          includePrivateRepoCount,
           maxRepos: maxRepos ?? undefined,
         }
       );

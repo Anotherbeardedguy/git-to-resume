@@ -377,7 +377,6 @@ export async function analyzeGitHubActivity(
   timeWindowMonths = 12,
   opts?: {
     includedRepoFullNames?: string[];
-    includePrivateRepoCount?: boolean;
     maxRepos?: number;
   }
 ): Promise<ReportMetrics> {
@@ -416,7 +415,9 @@ export async function analyzeGitHubActivity(
 
   const recentEvents = events.filter((e) => new Date(e.created_at) > cutoffDate);
 
-  const languageStats = calculateLanguageStats(cappedRepos);
+  const languageStats = calculateLanguageStats(
+    recentRepos.length > 0 ? recentRepos : cappedRepos
+  );
   const contributionSummary = await getContributionSummary(
     accessToken,
     username,
@@ -438,19 +439,6 @@ export async function analyzeGitHubActivity(
   const ownershipScore = calculateOwnershipScore(topRepositories);
   const collaborationIndex = calculateCollaborationIndex(contributionSummary);
 
-  let privateRepoCount: number | null = null;
-  if (opts?.includePrivateRepoCount) {
-    try {
-      const profile = await fetchGitHub("/user", accessToken);
-      privateRepoCount =
-        typeof profile?.total_private_repos === "number"
-          ? profile.total_private_repos
-          : null;
-    } catch {
-      privateRepoCount = null;
-    }
-  }
-
   return {
     consistencyIndex,
     recencyScore,
@@ -461,25 +449,29 @@ export async function analyzeGitHubActivity(
     primaryLanguages: languageStats,
     contributionSummary,
     topRepositories,
-    privateRepoCount,
   };
 }
 
 function calculateLanguageStats(repos: GitHubRepo[]): LanguageStat[] {
-  const languageCounts: Record<string, number> = {};
+  const languageWeights: Record<string, number> = {};
 
-  repos.forEach((repo) => {
-    if (repo.language) {
-      languageCounts[repo.language] = (languageCounts[repo.language] || 0) + 1;
-    }
-  });
+  for (const repo of repos) {
+    if (!repo.language) continue;
+    const sizeKb =
+      typeof repo.size === "number" && Number.isFinite(repo.size) && repo.size > 0
+        ? repo.size
+        : 1;
+    languageWeights[repo.language] =
+      (languageWeights[repo.language] || 0) + sizeKb;
+  }
 
-  const total = Object.values(languageCounts).reduce((a, b) => a + b, 0);
+  const total = Object.values(languageWeights).reduce((a, b) => a + b, 0);
+  if (total <= 0) return [];
 
-  return Object.entries(languageCounts)
-    .map(([language, count]) => ({
+  return Object.entries(languageWeights)
+    .map(([language, weight]) => ({
       language,
-      percentage: Math.round((count / total) * 100),
+      percentage: Math.round((weight / total) * 100),
       color: LANGUAGE_COLORS[language] || LANGUAGE_COLORS.Other,
     }))
     .sort((a, b) => b.percentage - a.percentage)

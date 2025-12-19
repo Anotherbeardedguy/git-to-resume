@@ -461,7 +461,7 @@ export async function GET(
     doc.moveDown(1);
 
     const summaryBoxY = doc.y;
-    const summaryBoxH = typeof metrics.privateRepoCount === "number" ? 92 : 74;
+    const summaryBoxH = 74;
     ensureSpace(summaryBoxH + 16);
     doc.save();
     doc.roundedRect(contentX, summaryBoxY, contentW, summaryBoxH, PAGE.radius).fill("#FFFFFF");
@@ -482,14 +482,6 @@ export async function GET(
       .fillColor(COLORS.slate900)
       .fontSize(12)
       .text(`Active repos: ${metrics.activeRepos}`, { width: contentW - 32 });
-    if (typeof metrics.privateRepoCount === "number") {
-      doc
-        .fillColor(COLORS.slate700)
-        .fontSize(10)
-        .text(`Private repos (not analyzed): ${metrics.privateRepoCount}`, {
-          width: contentW - 32,
-        });
-    }
     doc
       .fillColor(COLORS.slate700)
       .fontSize(10)

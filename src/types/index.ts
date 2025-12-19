@@ -8,7 +8,6 @@ export interface ReportMetrics {
   primaryLanguages: LanguageStat[];
   contributionSummary: ContributionSummary;
   topRepositories: RepositorySummary[];
-  privateRepoCount?: number | null;
 }
 
 export interface LanguageStat {
@@ -50,6 +49,7 @@ export interface GitHubRepo {
   description: string | null;
   stargazers_count: number;
   language: string | null;
+  size?: number;
   created_at: string;
   updated_at: string;
   pushed_at: string;
